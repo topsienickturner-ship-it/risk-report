@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 import sys
+import re
 import tempfile
 from xml.sax.saxutils import escape
 
@@ -34,15 +35,66 @@ def text(value):
     return str(value).strip()
 
 
-def read_risks(path, sheet=None, header_row=10):
+# Prefixes are recognised at the start of a line, never within prose or dates.
+ACTION_PREFIX = re.compile(r"(?m)^[ \t]*(\d{2,})[.) :\-]?[ \t]+|^[ \t]*(\d{2,})[.) :\-]?[ \t]*$")
+
+
+def split_actions(record):
+    """Align numbered entries by their prefix, not by their position in a cell."""
+    fields = {k: v for k, v in record.items() if k.startswith('Action ')}
+    parsed = {}
+    numbers = set()
+    for key, value in fields.items():
+        value = value.replace('\r\n', '\n').replace('\r', '\n')
+        matches = list(ACTION_PREFIX.finditer(value))
+        if not matches:
+            continue
+        if value[:matches[0].start()].strip():
+            raise ValueError(f'{key}: text before first numbered action.')
+        entries = {}
+        for i, match in enumerate(matches):
+            number = int(match.group(1) or match.group(2))
+            if number in entries:
+                raise ValueError(f'{key}: repeated action prefix {number:02d}.')
+            end = matches[i+1].start() if i+1 < len(matches) else len(value)
+            entries[number] = value[match.end():end].strip()
+        parsed[key] = entries
+        numbers.update(entries)
+    if not numbers:
+        return [fields] if any(fields.values()) else []
+    if len(numbers) > 1:
+        for key, value in fields.items():
+            if value and key not in parsed:
+                raise ValueError(f'{key}: unnumbered value alongside multiple numbered actions; '
+                                 'prefix each value to identify its action.')
+    actions = []
+    for number in sorted(numbers):
+        action = {key: parsed[key].get(number, '') if key in parsed else value
+                  for key, value in fields.items()}
+        action['_number'] = f'{number:02d}'
+        actions.append(action)
+    return actions
+
+
+def read_risks(path, sheet=None, header_row=None):
     """Keep first nonempty shared values; reject ambiguous or unassigned data."""
     workbook = load_workbook(path, read_only=True, data_only=True)
     try:
         ws = workbook[sheet] if sheet else workbook.active
-        rows = ws.iter_rows(min_row=header_row, values_only=True)
-        headers = [text(v) for v in next(rows, ())]
+        # Some exporters write incorrect worksheet dimensions. Read the actual
+        # cells and retain column positions, including blank leading columns.
+        ws.reset_dimensions()
+        rows = ws.iter_rows(values_only=True)
+        headers = []
+        for source_row, values in enumerate(rows, 1):
+            candidate = [text(v) for v in values]
+            if (header_row is None and 'Risk ID' in candidate) or source_row == header_row:
+                headers = candidate
+                header_row = source_row
+                break
         if 'Risk ID' not in headers:
-            raise ValueError(f"No 'Risk ID' column on row {header_row} of {ws.title!r}.")
+            raise ValueError(f"No 'Risk ID' column found in {ws.title!r}"
+                             + (f' on row {header_row}.' if header_row else '.'))
         named = [h for h in headers if h]
         if len(named) != len(set(named)):
             raise ValueError('Duplicate column headings; each named column must be unique.')
@@ -64,19 +116,22 @@ def read_risks(path, sheet=None, header_row=10):
                     raise ValueError(f'Row {row_number}, risk {risk_id}: conflicting {key!r}: '
                                      f'{previous!r} / {value!r}.')
                 risk.details[key] = value
-            action = {k: v for k, v in record.items() if k.startswith('Action ')}
-            if not any(action.values()):
-                continue
-            action_id = action.get('Action ID')
-            if action_id:
-                key = (risk_id, action_id)
-                if key in seen_actions:
-                    if seen_actions[key] != action:
-                        raise ValueError(f'Row {row_number}: conflicting duplicate action '
-                                         f'{action_id!r} for risk {risk_id}.')
-                    continue  # Identical repeated action: render once.
-                seen_actions[key] = action
-            risk.actions.append(action)
+            try:
+                actions = split_actions(record)
+            except ValueError as exc:
+                raise ValueError(f'Row {row_number}, risk {risk_id}: {exc}') from exc
+            for action in actions:
+                action_id = action.get('Action ID')
+                if action_id:
+                    key = (risk_id, action_id)
+                    comparable = {k: v for k, v in action.items() if k != '_number'}
+                    if key in seen_actions:
+                        if seen_actions[key] != comparable:
+                            raise ValueError(f'Row {row_number}: conflicting duplicate action '
+                                             f'{action_id!r} for risk {risk_id}.')
+                        continue
+                    seen_actions[key] = comparable
+                risk.actions.append(action)
         if not risks:
             raise ValueError('No risk records found beneath the column headings.')
         return list(risks.values())
@@ -198,8 +253,9 @@ def build_report(risks, output, project='Project', report_date=None, cost='plann
                    ('Action Planned Spend' if cost == 'planned' else 'Action Actual Spend',
                     'Planned cost' if cost == 'planned' else 'Actual cost')]
         rows = [[para(label, SMALL) for _, label in columns]]
-        rows.extend([[para(action.get(key), SMALL) for key, _ in columns]
-                     for action in risk.actions])
+        rows.extend([[para((action.get(key) or action.get('_number'))
+                               if key == 'Action ID' else action.get(key), SMALL)
+                      for key, _ in columns] for action in risk.actions])
         story.append(LongTable(rows, colWidths=[doc.width*f for f in
                           [.06, .23, .13, .08, .08, .08, .25, .09]],
                           repeatRows=1, splitByRow=1, splitInRow=1, style=table_style()))
@@ -212,12 +268,12 @@ def main():
     parser.add_argument('input', type=Path, help='Excel .xlsx export')
     parser.add_argument('-o', '--output', type=Path, default=Path('risk-report.pdf'))
     parser.add_argument('--sheet', help='Worksheet name (default: active worksheet)')
-    parser.add_argument('--header-row', type=int, default=10)
+    parser.add_argument('--header-row', type=int, help='Header row (default: detect Risk ID column)')
     parser.add_argument('--project', default='Project', help='Project title in page headers')
     parser.add_argument('--report-date', help='Printed date (default: today)')
     parser.add_argument('--cost', choices=['planned', 'actual'], default='planned')
     args = parser.parse_args()
-    if args.header_row < 1:
+    if args.header_row is not None and args.header_row < 1:
         parser.error('--header-row must be positive')
     if args.input.resolve() == args.output.resolve():
         parser.error('Input and output paths must differ')

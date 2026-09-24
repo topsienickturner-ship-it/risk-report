@@ -28,13 +28,33 @@ python risk_report.py "/path/to/register.xlsx" \
 Optional arguments:
 
 - `--sheet Export`: worksheet name; otherwise uses the active worksheet.
-- `--header-row 10`: row containing column names (10 is the default).
+- `--header-row 10`: explicitly select the header row; by default it is detected
+  by finding the `Risk ID` heading, even with blank leading columns.
 - `--report-date "24/09/2026"`: printed date; defaults to today.
 - `--cost actual`: display actual action spend instead of planned spend.
 
 The output directory must already exist. A successful run replaces an existing
 output PDF. The source workbook is never modified. An empty export produces a
 clear error and no report.
+
+## Multiple actions in one row
+
+Action cells may contain numbered entries on separate lines, such as:
+
+```text
+01 Review the schedule
+02 Confirm resources
+```
+
+Prefixes such as `01.`, `01:`, `01)` and `01-` are accepted (with whitespace
+after the prefix). Each number becomes a separate report action row. Values in
+all action columns are matched by number, so a missing `02` owner stays blank.
+Unnumbered continuation lines remain part of the preceding action. Numbering
+must start at the beginning of a line; inline numbers in prose are not split.
+Unnumbered populated fields alongside multiple numbered actions are rejected
+because their action association is ambiguous. Without an Action ID, the prefix
+is displayed in the report ID column. Ordinary one-action-per-row exports remain
+supported.
 
 ## Data and layout
 
