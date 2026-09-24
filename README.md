@@ -46,9 +46,10 @@ Action cells may contain numbered entries on separate lines, such as:
 02 - Confirm resources
 ```
 
-Spaced hyphens (`01 - `), nonbreaking spaces and Unicode line separators are
-supported. Prefixes such as `01.`, `01:`, `01)` and `01-` are accepted (with whitespace
-after the prefix). Each number becomes a separate report action row. Values in
+Only exactly two digits followed by a spaced hyphen (`01 - `) start an action.
+Nonbreaking spaces and Unicode line separators are supported. Bare numbers, long
+reference numbers, dates and numbered prose such as `01.` are preserved as text.
+Each action marker becomes a separate report action row. Values in
 all action columns are matched by number, so a missing `02` owner stays blank.
 Unnumbered continuation lines remain part of the preceding action. Numbering
 must start at the beginning of a line; inline numbers in prose are not split.

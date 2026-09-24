@@ -35,10 +35,8 @@ def text(value):
     return str(value).strip()
 
 
-# Prefixes are recognised at the start of a line, never within prose or dates.
-ACTION_PREFIX = re.compile(
-    r"(?m)^[^\S\n]*(\d{2,})(?:[^\S\n]*[-–—.):](?:[^\S\n]+|$)|[^\S\n]+|$)"
-)
+# Match the export's explicit two-digit marker, not numeric prose or IDs.
+ACTION_PREFIX = re.compile(r"(?m)^[^\S\n]*([0-9]{2})[^\S\n]+-(?:[^\S\n]+|$)")
 
 
 def split_actions(record):

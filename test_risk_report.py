@@ -56,7 +56,7 @@ class ReportTests(unittest.TestCase):
         ws = wb.active
         ws.append([None, 'Export title'])
         ws.append([None, 'Risk ID', 'Title', 'Action Title'])
-        ws.append([None, 'R1', 'Example', '01 First\n02 Second'])
+        ws.append([None, 'R1', 'Example', '01 - First\n02 - Second'])
         path = self.root / 'leading-blank.xlsx'
         wb.save(path)
         risks = read_risks(path)
@@ -76,9 +76,9 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(read_risks(path)[0].risk_id, 'R1')
 
     def test_numbered_columns_align_by_number(self):
-        actions = split_actions({'Action Title': '01. First\ncontinued text\n02. Second\n03. Third',
-                                 'Action Owner': '03 Carol\n01 Alice',
-                                 'Action Start Date (forecast)': '01 01/03/2026\n03 02/04/2026'})
+        actions = split_actions({'Action Title': '01 - First\ncontinued text\n02 - Second\n03 - Third',
+                                 'Action Owner': '03 - Carol\n01 - Alice',
+                                 'Action Start Date (forecast)': '01 - 01/03/2026\n03 - 02/04/2026'})
         self.assertEqual(len(actions), 3)
         self.assertEqual(actions[0]['Action Title'], 'First\ncontinued text')
         self.assertEqual(actions[0]['Action Owner'], 'Alice')
@@ -114,11 +114,23 @@ class ReportTests(unittest.TestCase):
                     self.assertEqual([row[1][0].getPlainText() for row in rows[1:]],
                                      ['First', 'Second', 'Third'])
 
+    def test_numeric_prose_is_not_an_action_prefix(self):
+        for numeric_line in ['991234567', '991234567 reference', '991234567 - reference',
+                             '99 people involved', '01/03/2026', '01. Detail', '01- Detail']:
+            with self.subTest(line=numeric_line):
+                first = 'Review reference 991234567\n' + numeric_line
+                actions = split_actions({'Action Title': '01 - ' + first + '\n02 - Follow up'})
+                self.assertEqual(len(actions), 2)
+                self.assertEqual(actions[0]['Action Title'], first)
+                self.assertEqual(actions[1]['Action Title'], 'Follow up')
+                self.assertEqual(split_actions({'Action ID': numeric_line}),
+                                 [{'Action ID': numeric_line}])
+
     def test_ambiguous_numbered_actions_rejected(self):
         with self.assertRaisesRegex(ValueError, 'unnumbered value'):
-            split_actions({'Action Title': '01 First\n02 Second', 'Action Owner': 'Alice'})
+            split_actions({'Action Title': '01 - First\n02 - Second', 'Action Owner': 'Alice'})
         with self.assertRaisesRegex(ValueError, 'repeated action prefix'):
-            split_actions({'Action Title': '01 First\n01 Second'})
+            split_actions({'Action Title': '01 - First\n01 - Second'})
 
     def test_long_action_and_long_description_paginate(self):
         risks = [Risk('R1', {'Title': 'Long action', 'Description': 'A risk & its effects'},
