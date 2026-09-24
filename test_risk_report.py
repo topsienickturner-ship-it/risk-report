@@ -3,6 +3,7 @@ import tempfile
 import unittest
 import zipfile
 import re
+from unittest.mock import patch
 from pathlib import Path
 from openpyxl import Workbook
 from risk_report import Risk, read_risks, build_report, split_actions
@@ -89,6 +90,29 @@ class ReportTests(unittest.TestCase):
         record = {'Action Title': 'Review\nthe schedule',
                   'Action Start Date (forecast)': '01/03/2026'}
         self.assertEqual(split_actions(record), [record])
+
+    def test_spaced_hyphen_actions_reach_pdf_as_separate_rows(self):
+        from reportlab.platypus import LongTable
+        for separator in ['\n', '\r\n', '\r', '\u2028', '\u2029']:
+            for space in [' ', '\u00a0']:
+                with self.subTest(separator=repr(separator), space=repr(space)):
+                    cell = separator.join(f'{n:02d}{space}-{space}{title}'
+                                          for n, title in enumerate(['First', 'Second', 'Third'], 1))
+                    path = self.workbook([['R1', 'One', None, cell]])
+                    risks = read_risks(path)
+                    self.assertEqual([a['Action Title'] for a in risks[0].actions],
+                                     ['First', 'Second', 'Third'])
+                    tables = []
+                    def capture(*args, **kwargs):
+                        table = LongTable(*args, **kwargs)
+                        tables.append(table)
+                        return table
+                    with patch('risk_report.LongTable', side_effect=capture):
+                        build_report(risks, self.root / 'numbered.pdf')
+                    rows = tables[0]._cellvalues
+                    self.assertEqual(len(rows), 4)  # Heading plus three actions.
+                    self.assertEqual([row[1][0].getPlainText() for row in rows[1:]],
+                                     ['First', 'Second', 'Third'])
 
     def test_ambiguous_numbered_actions_rejected(self):
         with self.assertRaisesRegex(ValueError, 'unnumbered value'):

@@ -42,11 +42,12 @@ clear error and no report.
 Action cells may contain numbered entries on separate lines, such as:
 
 ```text
-01 Review the schedule
-02 Confirm resources
+01 - Review the schedule
+02 - Confirm resources
 ```
 
-Prefixes such as `01.`, `01:`, `01)` and `01-` are accepted (with whitespace
+Spaced hyphens (`01 - `), nonbreaking spaces and Unicode line separators are
+supported. Prefixes such as `01.`, `01:`, `01)` and `01-` are accepted (with whitespace
 after the prefix). Each number becomes a separate report action row. Values in
 all action columns are matched by number, so a missing `02` owner stays blank.
 Unnumbered continuation lines remain part of the preceding action. Numbering

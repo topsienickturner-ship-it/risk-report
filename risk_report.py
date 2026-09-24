@@ -36,7 +36,9 @@ def text(value):
 
 
 # Prefixes are recognised at the start of a line, never within prose or dates.
-ACTION_PREFIX = re.compile(r"(?m)^[ \t]*(\d{2,})[.) :\-]?[ \t]+|^[ \t]*(\d{2,})[.) :\-]?[ \t]*$")
+ACTION_PREFIX = re.compile(
+    r"(?m)^[^\S\n]*(\d{2,})(?:[^\S\n]*[-–—.):](?:[^\S\n]+|$)|[^\S\n]+|$)"
+)
 
 
 def split_actions(record):
@@ -45,7 +47,7 @@ def split_actions(record):
     parsed = {}
     numbers = set()
     for key, value in fields.items():
-        value = value.replace('\r\n', '\n').replace('\r', '\n')
+        value = '\n'.join(value.splitlines())
         matches = list(ACTION_PREFIX.finditer(value))
         if not matches:
             continue
@@ -53,7 +55,7 @@ def split_actions(record):
             raise ValueError(f'{key}: text before first numbered action.')
         entries = {}
         for i, match in enumerate(matches):
-            number = int(match.group(1) or match.group(2))
+            number = int(match.group(1))
             if number in entries:
                 raise ValueError(f'{key}: repeated action prefix {number:02d}.')
             end = matches[i+1].start() if i+1 < len(matches) else len(value)
