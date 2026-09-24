@@ -225,7 +225,7 @@ def build_report(risks, output, project='Project', report_date=None, cost='plann
             story.append(PageBreak())
         d = risk.details
         story.append(RiskHeading(risk))
-        for label, key in [('Status', 'Risk Status'), ('Owner', 'Owner'), ('Type', 'Type'),
+        for label, key in [('Status', 'Risk Status'), ('Owner', 'External Owner'), ('Type', 'Type'),
                            ('Risk', 'Description'), ('Cause', 'Cause'), ('Effect', 'Impact')]:
             story.append(labelled(label, d.get(key)))
         story.append(Spacer(1, 3*mm))

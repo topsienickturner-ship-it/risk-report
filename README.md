@@ -73,6 +73,8 @@ no actions display “No actions recorded”. Fields beginning `Action ` are tre
 as action data; all other named fields are treated as shared risk data.
 
 The report shows Title, Risk Status, Owner, Type, Description, Cause and Impact.
+The displayed risk Owner comes from `External Owner`, to include owners who are
+not RiskHive users. A blank External Owner is displayed as a dash.
 It uses Initial, Current and Target assessments rather than assuming what the
 reference image's “Pre” and “Post” mean. Probability, schedule, cost, technical/
 engineering performance and score are displayed for each assessment. The export's
